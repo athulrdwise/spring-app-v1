@@ -27,7 +27,7 @@ jobs:
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "target/*.jar"
           target: "/DataVolume/Athul/project/ci-cd-deployment"
 
@@ -36,7 +36,7 @@ jobs:
       #   with:
       #     host: ${{ secrets.SERVER_HOST }}
       #     username: ${{ secrets.SERVER_USER }}
-      #     key: ${{ secrets.SERVER_SSH_KEY }}
+      #     key: ${{ secrets.SSH_PRIVATE_KEY }}
       #     script: |
       #       cd /DataVolume/Athul/project/ci-cd-deployment
       #       bash deployment.sh
