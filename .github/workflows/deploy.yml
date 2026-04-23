@@ -1,31 +1,91 @@
-name: Spring Boot Deployment with CI / CD
+name: Spring Boot Deployment with CI/CD
 
 on:
   push:
     branches:
       - main
 
-jobs: 
+jobs:
   build-and-deploy:
     runs-on: self-hosted
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-        
+
       - name: Build with Maven
         run: mvn clean package -DskipTests
 
-      - name: Copy JAR to Deployment Directory
-        run: cp target/*.jar /DataVolume/Athul/project/ci-cd-deployment
-
       - name: Deploy Application
         run: |
-          cd /DataVolume/Athul/project/ci-cd-deployment
-          bash deployment.sh
+          set -e
+
+          DEPLOY_DIR="/DataVolume/Athul/project/ci-cd-deployment"
+          PID_FILE="$DEPLOY_DIR/app.pid"
+
+          echo "================================="
+          echo "🚀 Starting Deployment"
+          echo "================================="
+
+          # Copy JAR to deployment directory
+          cp target/*.jar "$DEPLOY_DIR"
+
+          cd "$DEPLOY_DIR"
+
+          # Safely get latest JAR
+          JAR_FILE=$(ls -t *.jar 2>/dev/null | head -n 1)
+
+          if [ -z "$JAR_FILE" ]; then
+            echo "❌ No JAR file found!"
+            exit 1
+          fi
+
+          echo "📦 Using JAR: $JAR_FILE"
+
+          # Stop old app safely
+          echo "🛑 Stopping old app..."
+
+          if [ -f "$PID_FILE" ]; then
+            PID=$(cat "$PID_FILE")
+
+            if ps -p $PID > /dev/null 2>&1; then
+              kill -9 $PID
+              echo "Waiting for process to stop..."
+              sleep 5
+            else
+              echo "⚠️ Process not running"
+            fi
+
+            rm -f "$PID_FILE"
+          else
+            echo "ℹ️ No PID file found"
+          fi
+
+          # Start new app
+          echo "▶️ Starting new app..."
+
+          nohup java -jar "$JAR_FILE" > "$DEPLOY_DIR/app.log" 2>&1 &
+
+          NEW_PID=$!
+          echo $NEW_PID > "$PID_FILE"
+
+          sleep 10
+
+          # Verify app started
+          if ps -p $NEW_PID > /dev/null 2>&1; then
+            echo "✅ App started successfully (PID: $NEW_PID)"
+          else
+            echo "❌ App failed to start!"
+            tail -n 50 "$DEPLOY_DIR/app.log"
+            exit 1
+          fi
+
+          echo "================================="
+          echo "🎉 Deployment Successful!"
+          echo "================================="
