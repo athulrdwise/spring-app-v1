@@ -9,6 +9,9 @@ jobs:
   build-and-deploy:
     runs-on: self-hosted
 
+    env:
+      DEPLOY_DIR: /DataVolume/Athul/project/ci-cd-deployment
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -22,71 +25,102 @@ jobs:
       - name: Build with Maven
         run: mvn clean package -DskipTests
 
-      - name: Deploy Application
+      - name: Copy JAR to deployment directory
         run: |
-          set -e
+          cp target/*.jar "$DEPLOY_DIR/"
 
-          DEPLOY_DIR="/DataVolume/Athul/project/ci-cd-deployment"
+      - name: Resolve latest JAR
+        id: jar
+        run: |
+          JAR=$(ls -t "$DEPLOY_DIR"/*.jar 2>/dev/null | head -n 1)
+          if [ -z "$JAR" ]; then
+            echo "❌ No JAR file found in $DEPLOY_DIR"
+            exit 1
+          fi
+          echo "path=$JAR" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$JAR")" >> "$GITHUB_OUTPUT"
+
+      - name: Stop existing application
+        run: |
           PID_FILE="$DEPLOY_DIR/app.pid"
 
-          echo "================================="
-          echo "🚀 Starting Deployment"
-          echo "================================="
-
-          # Copy JAR to deployment directory
-          cp target/*.jar "$DEPLOY_DIR"
-
-          cd "$DEPLOY_DIR"
-
-          # Safely get latest JAR
-          JAR_FILE=$(ls -t *.jar 2>/dev/null | head -n 1)
-
-          if [ -z "$JAR_FILE" ]; then
-            echo "❌ No JAR file found!"
-            exit 1
+          if [ ! -f "$PID_FILE" ]; then
+            echo "ℹ️ No PID file found — assuming cold start"
+            exit 0
           fi
 
-          echo "📦 Using JAR: $JAR_FILE"
+          PID=$(cat "$PID_FILE")
 
-          # Stop old app safely
-          echo "🛑 Stopping old app..."
-
-          if [ -f "$PID_FILE" ]; then
-            PID=$(cat "$PID_FILE")
-
-            if ps -p $PID > /dev/null 2>&1; then
-              kill -9 $PID
-              echo "Waiting for process to stop..."
-              sleep 5
-            else
-              echo "⚠️ Process not running"
-            fi
-
+          if ! [[ "$PID" =~ ^[0-9]+$ ]]; then
+            echo "⚠️ PID file contains invalid value: '$PID' — skipping kill"
             rm -f "$PID_FILE"
-          else
-            echo "ℹ️ No PID file found"
+            exit 0
           fi
 
-          # Start new app
-          echo "▶️ Starting new app..."
+          if ps -p "$PID" > /dev/null 2>&1; then
+            echo "🛑 Stopping PID $PID..."
+            kill "$PID"
 
-          setsid nohup java -jar "$JAR_FILE" > "$DEPLOY_DIR/app.log" 2>&1 &
+            for i in $(seq 1 10); do
+              sleep 1
+              if ! ps -p "$PID" > /dev/null 2>&1; then
+                echo "✅ Process stopped after ${i}s"
+                break
+              fi
+              if [ "$i" -eq 10 ]; then
+                echo "⚠️ Graceful stop timed out — force killing PID $PID"
+                kill -9 "$PID" || true
+              fi
+            done
+          else
+            echo "⚠️ Process $PID not running — stale PID file"
+          fi
+
+          rm -f "$PID_FILE"
+
+      - name: Start application
+        run: |
+          JAR="${{ steps.jar.outputs.path }}"
+          PID_FILE="$DEPLOY_DIR/app.pid"
+          LOG_FILE="$DEPLOY_DIR/app.log"
+
+          echo "▶️ Launching: $(basename "$JAR")"
+
+          setsid nohup java -jar "$JAR" \
+            > "$LOG_FILE" 2>&1 &
 
           NEW_PID=$!
-          disown $NEW_PID
-          echo $NEW_PID > "$PID_FILE"
+          disown "$NEW_PID"
+          echo "$NEW_PID" > "$PID_FILE"
 
-          sleep 10
+          echo "ℹ️ PID $NEW_PID written to $PID_FILE"
 
-          # Verify app started
-          if ps -p $NEW_PID > /dev/null 2>&1; then
-            echo "✅ App started successfully (PID: $NEW_PID)"
-          else
-            echo "❌ App failed to start!"
-            tail -n 50 "$DEPLOY_DIR/app.log"
-            exit 1
-          fi
+      - name: Verify application started
+        run: |
+          PID_FILE="$DEPLOY_DIR/app.pid"
+          LOG_FILE="$DEPLOY_DIR/app.log"
 
+          PID=$(cat "$PID_FILE")
+          echo "⏳ Waiting for app to initialize..."
+
+          for i in $(seq 1 15); do
+            sleep 2
+            if ps -p "$PID" > /dev/null 2>&1; then
+              echo "✅ App running (PID: $PID) after $((i * 2))s"
+              exit 0
+            fi
+          done
+
+          echo "❌ App failed to start within 30s"
+          echo "--- Last 50 log lines ---"
+          tail -n 50 "$LOG_FILE" || true
+          exit 1
+
+      - name: Deployment summary
+        if: success()
+        run: |
           echo "================================="
           echo "🎉 Deployment Successful!"
+          echo "  JAR : ${{ steps.jar.outputs.name }}"
+          echo "  PID : $(cat "$DEPLOY_DIR/app.pid")"
           echo "================================="
