@@ -25,7 +25,7 @@ jobs:
       - name: Copy JAR to Deployment Directory
         run: cp target/*.jar /DataVolume/Athul/project/ci-cd-deployment
 
-      # - name: Deploy Application
-      #   run: |
-      #     cd /DataVolume/Athul/project/ci-cd-deployment
-      #     bash deployment.sh
+      - name: Deploy Application
+        run: |
+          cd /DataVolume/Athul/project/ci-cd-deployment
+          bash deployment.sh
