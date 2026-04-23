@@ -70,9 +70,10 @@ jobs:
           # Start new app
           echo "▶️ Starting new app..."
 
-          nohup java -jar "$JAR_FILE" > "$DEPLOY_DIR/app.log" 2>&1 &
+          setsid nohup java -jar "$JAR_FILE" > "$DEPLOY_DIR/app.log" 2>&1 &
 
           NEW_PID=$!
+          disown $NEW_PID
           echo $NEW_PID > "$PID_FILE"
 
           sleep 10
