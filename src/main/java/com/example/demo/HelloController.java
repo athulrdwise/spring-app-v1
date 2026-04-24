@@ -8,6 +8,16 @@ public class HelloController {
 
     @GetMapping("/")
     public String hello() {
-        return "Hello ATHUL RETNAKAR, welcome to Spring Boot!";
+        return """
+                <html>
+                    <body style='display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; background-color: #f0f2f5;'>
+                        <div style='text-align: center; padding: 40px; background: white; border-radius: 15px; shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid #e1e4e8;'>
+                            <h1 style='color: #2c3e50; margin-bottom: 10px;'>Hello ATHUL RETNAKAR</h1>
+                            <p style='color: #7f8c8d; font-size: 1.2rem;'>This is <span style='color: #3498db; font-weight: bold;'>version 10.0.11</span></p>
+                        </div>
+                    </body>
+                </html>
+                """;
+
     }
 }
