@@ -11,7 +11,6 @@ jobs:
 
     env:
       DEPLOY_DIR: /DataVolume/Athul/project/ci-cd-deployment
-      SERVICE_NAME: myapp
 
     steps:
       - name: Checkout code
@@ -27,68 +26,101 @@ jobs:
         run: mvn clean package -DskipTests
 
       - name: Copy JAR to deployment directory
-        run: cp target/*.jar "$DEPLOY_DIR/"
+        run: |
+          cp target/*.jar "$DEPLOY_DIR/"
 
       - name: Resolve latest JAR
         id: jar
         run: |
           JAR=$(ls -t "$DEPLOY_DIR"/*.jar 2>/dev/null | head -n 1)
           if [ -z "$JAR" ]; then
-            echo "No JAR found in $DEPLOY_DIR"
+            echo "❌ No JAR file found in $DEPLOY_DIR"
             exit 1
           fi
           echo "path=$JAR" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$JAR")" >> "$GITHUB_OUTPUT"
 
-      - name: Write systemd unit file
+      - name: Stop existing application
         run: |
-          sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null <<EOF
-          [Unit]
-          Description=Spring Boot - ${SERVICE_NAME}
-          After=network.target
+          PID_FILE="$DEPLOY_DIR/app.pid"
 
-          [Service]
-          Type=simple
-          WorkingDirectory=${DEPLOY_DIR}
-          ExecStart=/usr/bin/java -jar ${{ steps.jar.outputs.path }}
-          StandardOutput=append:${DEPLOY_DIR}/app.log
-          StandardError=append:${DEPLOY_DIR}/app.log
-          Restart=on-failure
-          RestartSec=5
+          if [ ! -f "$PID_FILE" ]; then
+            echo "ℹ️ No PID file found — assuming cold start"
+            exit 0
+          fi
 
-          [Install]
-          WantedBy=multi-user.target
-          EOF
+          PID=$(cat "$PID_FILE")
 
-      - name: Reload systemd and restart service
+          if ! [[ "$PID" =~ ^[0-9]+$ ]]; then
+            echo "⚠️ PID file contains invalid value: '$PID' — skipping kill"
+            rm -f "$PID_FILE"
+            exit 0
+          fi
+
+          if ps -p "$PID" > /dev/null 2>&1; then
+            echo "🛑 Stopping PID $PID..."
+            kill "$PID"
+
+            for i in $(seq 1 10); do
+              sleep 1
+              if ! ps -p "$PID" > /dev/null 2>&1; then
+                echo "✅ Process stopped after ${i}s"
+                break
+              fi
+              if [ "$i" -eq 10 ]; then
+                echo "⚠️ Graceful stop timed out — force killing PID $PID"
+                kill -9 "$PID" || true
+              fi
+            done
+          else
+            echo "⚠️ Process $PID not running — stale PID file"
+          fi
+
+          rm -f "$PID_FILE"
+
+      - name: Start application
         run: |
-          sudo systemctl daemon-reload
-          sudo systemctl restart ${SERVICE_NAME}.service
-          sudo systemctl enable ${SERVICE_NAME}.service
+          JAR="${{ steps.jar.outputs.path }}"
+          PID_FILE="$DEPLOY_DIR/app.pid"
+          LOG_FILE="$DEPLOY_DIR/app.log"
 
-      - name: Verify service is running
+          echo "▶️ Launching: $(basename "$JAR")"
+
+          setsid nohup java -jar "$JAR" \
+            > "$LOG_FILE" 2>&1 &
+
+          NEW_PID=$!
+          disown "$NEW_PID"
+          echo "$NEW_PID" > "$PID_FILE"
+
+          echo "ℹ️ PID $NEW_PID written to $PID_FILE"
+
+      - name: Verify application started
         run: |
-          echo "Waiting for service to stabilize..."
+          PID_FILE="$DEPLOY_DIR/app.pid"
+          LOG_FILE="$DEPLOY_DIR/app.log"
+
+          PID=$(cat "$PID_FILE")
+          echo "⏳ Waiting for app to initialize..."
+
           for i in $(seq 1 15); do
             sleep 2
-            STATUS=$(sudo systemctl is-active ${SERVICE_NAME}.service)
-            if [ "$STATUS" = "active" ]; then
-              echo "Service is active after $((i * 2))s"
-              sudo systemctl status ${SERVICE_NAME}.service --no-pager
+            if ps -p "$PID" > /dev/null 2>&1; then
+              echo "✅ App running (PID: $PID) after $((i * 2))s"
               exit 0
             fi
-            echo "  [$i] Status: $STATUS"
           done
-          echo "Service failed to start within 30s"
-          sudo journalctl -u ${SERVICE_NAME}.service -n 50 --no-pager
+
+          echo "❌ App failed to start within 30s"
+          echo "--- Last 50 log lines ---"
+          tail -n 50 "$LOG_FILE" || true
           exit 1
 
       - name: Deployment summary
         if: success()
         run: |
           echo "================================="
-          echo "Deployment Successful!"
-          echo "  JAR     : ${{ steps.jar.outputs.name }}"
-          echo "  Service : $SERVICE_NAME"
-          echo "  Status  : $(sudo systemctl is-active $SERVICE_NAME)"
+          echo "🎉 Deployment Successful!"
+          echo "  JAR : ${{ steps.jar.outputs.name }}"
+          echo "  PID : $(cat "$DEPLOY_DIR/app.pid")"
           echo "================================="
