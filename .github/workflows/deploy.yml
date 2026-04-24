@@ -51,8 +51,8 @@ jobs:
           Type=simple
           WorkingDirectory=${DEPLOY_DIR}
           ExecStart=/usr/bin/java -jar ${{ steps.jar.outputs.path }}
-          StandardOutput=append:${DEPLOY_DIR}/app.log
-          StandardError=append:${DEPLOY_DIR}/app.log
+          StandardOutput=truncate:${DEPLOY_DIR}/app.log
+          StandardError=truncate:${DEPLOY_DIR}/app.log
           Restart=on-failure
           RestartSec=5
 
