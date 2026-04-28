@@ -10,7 +10,7 @@ jobs:
     runs-on: self-hosted
 
     env:
-      APP_NAME: Athul-app
+      APP_NAME: athul-app
       PORT: 8081
       VERSION: 1.0.${{ github.run_number}}
 
