@@ -35,7 +35,7 @@ jobs:
         run: |
           FILE="/DataVolume/Athul/project/trivy-report/${APP_NAME}-${VERSION}-trivy.txt"
           trivy image \
-          --severity CRITICAL \
+          --severity UNKNOWN,LOW,HIGH,CRITICAL \
           --format table \
           -o $FILE \
           ${APP_NAME}:${VERSION}
