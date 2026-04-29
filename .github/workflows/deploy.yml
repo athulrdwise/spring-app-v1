@@ -30,6 +30,15 @@ jobs:
       - name: Build Docker image
         run: |
           docker build -t ${APP_NAME}:${VERSION} .
+
+      - name: Save Trivy report
+        run: |
+          FILE="/DataVolume/Athul/project/trivy-report/${APP_NAME}-${VERSION}-trivy.txt"
+          trivy image \
+          --severity CRITICAL \
+          --format table \
+          -o $FILE \
+          ${APP_NAME}:${VERSION}
         
       - name: Stop and remove existing container
         run: |
