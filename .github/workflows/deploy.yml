@@ -67,15 +67,24 @@ jobs:
       - name: Run Trivy Scan
         run: |
           mkdir -p $TRIVY_REPORT_DIR
-              
+
           trivy fs \
             --scanners vuln,secret,misconfig \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
             --format table \
             -o $TRIVY_REPORT_DIR/${APP_NAME}-trivy.txt \
             .
-              
+
           echo "Trivy scan completed"
+
+      # Fail pipeline for HIGH/CRITICAL
+      - name: Check HIGH and CRITICAL Vulnerabilities
+        run: |
+          trivy fs \
+            --scanners vuln,secret,misconfig \
+            --severity CRITICAL \
+            --exit-code 1 \
+            .
 
       # Restart Docker container
       - name: Restart container
