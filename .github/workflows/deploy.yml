@@ -11,7 +11,6 @@ jobs:
 
     env:
       APP_NAME: athul-app
-      PORT: 8081
 
       # Deployment folder
       DEPLOY_DIR: /DataVolume/Athul/project/app
