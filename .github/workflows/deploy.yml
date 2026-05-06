@@ -67,13 +67,14 @@ jobs:
       - name: Run Trivy Scan
         run: |
           mkdir -p $TRIVY_REPORT_DIR
-
+              
           trivy fs \
+            --scanners vuln,secret,misconfig \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
             --format table \
             -o $TRIVY_REPORT_DIR/${APP_NAME}-trivy.txt \
-            $DEPLOY_DIR
-
+            $DEPLOY_DIR/$JAR_FILE
+              
           echo "Trivy scan completed"
 
       # Restart Docker container
