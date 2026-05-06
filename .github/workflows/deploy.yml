@@ -82,7 +82,7 @@ jobs:
         run: |
           trivy fs \
             --scanners vuln,secret,misconfig \
-            --severity CRITICAL \
+            --severity HIGH,CRITICAL \
             --exit-code 1 \
             .
 
