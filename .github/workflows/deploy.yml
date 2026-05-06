@@ -1,114 +1,114 @@
-name: JAR Deployment CI/CD
+# name: JAR Deployment CI/CD
 
-on:
-  push:
-    branches:
-      - main
+# on:
+#   push:
+#     branches:
+#       - main
 
-jobs:
-  build-and-deploy:
-    runs-on: self-hosted
+# jobs:
+#   build-and-deploy:
+#     runs-on: self-hosted
 
-    env:
-      APP_NAME: athul-app
+#     env:
+#       APP_NAME: athul-app
 
-      # Deployment folder
-      DEPLOY_DIR: /DataVolume/Athul/project/app
+#       # Deployment folder
+#       DEPLOY_DIR: /DataVolume/Athul/project/app
 
-      # Actual generated jar name
-      JAR_FILE: demo-0.0.1-SNAPSHOT.jar
+#       # Actual generated jar name
+#       JAR_FILE: demo-0.0.1-SNAPSHOT.jar
 
-      # Trivy report folder
-      TRIVY_REPORT_DIR: /DataVolume/Athul/project/trivy-report
+#       # Trivy report folder
+#       TRIVY_REPORT_DIR: /DataVolume/Athul/project/trivy-report
 
-    steps:
-      # Checkout latest code
-      - name: Checkout code
-        uses: actions/checkout@v4
+#     steps:
+#       # Checkout latest code
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      # Setup Java
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+#       # Setup Java
+#       - name: Setup Java
+#         uses: actions/setup-java@v4
+#         with:
+#           java-version: '17'
+#           distribution: 'temurin'
 
-      # Build JAR
-      - name: Build with Maven
-        run: |
-          mvn clean package -DskipTests
+#       # Build JAR
+#       - name: Build with Maven
+#         run: |
+#           mvn clean package -DskipTests
 
-      # Backup old JAR
-      - name: Backup old JAR
-        run: |
-          mkdir -p $DEPLOY_DIR/backup
+#       # Backup old JAR
+#       - name: Backup old JAR
+#         run: |
+#           mkdir -p $DEPLOY_DIR/backup
 
-          if [ -f "$DEPLOY_DIR/$JAR_FILE" ]; then
-            TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+#           if [ -f "$DEPLOY_DIR/$JAR_FILE" ]; then
+#             TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
-            cp \
-              $DEPLOY_DIR/$JAR_FILE \
-              $DEPLOY_DIR/backup/demo-$TIMESTAMP.jar
+#             cp \
+#               $DEPLOY_DIR/$JAR_FILE \
+#               $DEPLOY_DIR/backup/demo-$TIMESTAMP.jar
 
-            echo "Backup completed"
-          fi
+#             echo "Backup completed"
+#           fi
 
-      # Copy new JAR to deployment folder
-      - name: Deploy new JAR
-        run: |
-          cp target/$JAR_FILE $DEPLOY_DIR/
+#       # Copy new JAR to deployment folder
+#       - name: Deploy new JAR
+#         run: |
+#           cp target/$JAR_FILE $DEPLOY_DIR/
 
-          echo "New JAR deployed"
+#           echo "New JAR deployed"
 
-          ls -lh $DEPLOY_DIR
+#           ls -lh $DEPLOY_DIR
 
-      # Run Trivy scan
-      - name: Run Trivy Scan
-        run: |
-          mkdir -p $TRIVY_REPORT_DIR
+#       # Run Trivy scan
+#       - name: Run Trivy Scan
+#         run: |
+#           mkdir -p $TRIVY_REPORT_DIR
 
-          trivy fs \
-            --scanners vuln,secret,misconfig \
-            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            --format table \
-            -o $TRIVY_REPORT_DIR/${APP_NAME}-trivy.txt \
-            .
+#           trivy fs \
+#             --scanners vuln,secret,misconfig \
+#             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+#             --format table \
+#             -o $TRIVY_REPORT_DIR/${APP_NAME}-trivy.txt \
+#             .
 
-          echo "Trivy scan completed"
+#           echo "Trivy scan completed"
 
-      # Fail pipeline for HIGH/CRITICAL
-      - name: Check HIGH and CRITICAL Vulnerabilities
-        run: |
-          trivy fs \
-            --scanners vuln,secret,misconfig \
-            --severity HIGH,CRITICAL \
-            --exit-code 1 \
-            .
+#       # Fail pipeline for HIGH/CRITICAL
+#       - name: Check HIGH and CRITICAL Vulnerabilities
+#         run: |
+#           trivy fs \
+#             --scanners vuln,secret,misconfig \
+#             --severity HIGH,CRITICAL \
+#             --exit-code 1 \
+#             .
 
-      # Restart Docker container
-      - name: Restart container
-        run: |
-          cd $DEPLOY_DIR
+#       # Restart Docker container
+#       - name: Restart container
+#         run: |
+#           cd $DEPLOY_DIR
 
-          docker compose restart
+#           docker compose restart
 
-      # Verify container status
-      - name: Verify container
-        run: |
-          echo "Waiting for application..."
+#       # Verify container status
+#       - name: Verify container
+#         run: |
+#           echo "Waiting for application..."
 
-          sleep 10
+#           sleep 10
 
-          if docker ps | grep -q ${APP_NAME}; then
-            echo "Container is running"
+#           if docker ps | grep -q ${APP_NAME}; then
+#             echo "Container is running"
 
-            echo ""
-            echo "Recent Logs:"
-            docker logs ${APP_NAME} --tail 30
-          else
-            echo "Container failed"
+#             echo ""
+#             echo "Recent Logs:"
+#             docker logs ${APP_NAME} --tail 30
+#           else
+#             echo "Container failed"
 
-            docker logs ${APP_NAME}
+#             docker logs ${APP_NAME}
 
-            exit 1
-          fi
+#             exit 1
+#           fi
