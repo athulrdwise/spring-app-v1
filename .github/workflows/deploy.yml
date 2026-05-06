@@ -1,4 +1,4 @@
-name: Docker CI/CD Deployment
+name: JAR Deployment CI/CD
 
 on:
   push:
@@ -12,57 +12,81 @@ jobs:
     env:
       APP_NAME: athul-app
       PORT: 8081
-      VERSION: 1.0.${{ github.run_number}}
+
+      # Deployment folder
+      DEPLOY_DIR: /DataVolume/Athul/project/app
+
+      # Actual generated jar name
+      JAR_FILE: demo-0.0.1-SNAPSHOT.jar
+
+      # Trivy report folder
+      TRIVY_REPORT_DIR: /DataVolume/Athul/project/trivy-report
 
     steps:
+      # Checkout latest code
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
+      # Setup Java
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
+      # Build JAR
       - name: Build with Maven
-        run: mvn clean package -DskipTests
+        run: |
+          mvn clean package -DskipTests
 
-      - name: Build Docker image
+      # Backup old JAR
+      - name: Backup old JAR
         run: |
-          docker build -t ${APP_NAME}:${VERSION} .
+          mkdir -p $DEPLOY_DIR/backup
 
-      - name: Save Trivy report
-        run: |
-          FILE="/DataVolume/Athul/project/trivy-report/${APP_NAME}-${VERSION}-trivy.txt"
-          trivy image \
-          --severity UNKNOWN,LOW,HIGH,CRITICAL \
-          --format table \
-          -o $FILE \
-          ${APP_NAME}:${VERSION}
-        
-      - name: Stop and remove existing container
-        run: |
-          if [ $(docker ps -q -f name=${APP_NAME}) ]; then
-            docker stop ${APP_NAME}
-            docker rm ${APP_NAME}
+          if [ -f "$DEPLOY_DIR/$JAR_FILE" ]; then
+            TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+            cp \
+              $DEPLOY_DIR/$JAR_FILE \
+              $DEPLOY_DIR/backup/demo-$TIMESTAMP.jar
+
+            echo "Backup completed"
           fi
 
-      - name: Run new container
+      # Copy new JAR to deployment folder
+      - name: Deploy new JAR
         run: |
-          docker run -d -p $PORT:$PORT --name $APP_NAME $APP_NAME:${VERSION}
+          cp target/$JAR_FILE $DEPLOY_DIR/
 
-      - name: Verify container is running
+          echo "New JAR deployed"
+
+          ls -lh $DEPLOY_DIR
+
+      # Restart Docker container
+      - name: Restart container
         run: |
-          echo "Waiting for container to stabilize..."
-          for i in $(seq 1 15); do
-            sleep 2
-            if [ $(docker ps -q -f name=${APP_NAME}) ]; then
-              echo "Container is running after $((i * 2))s"
-              docker logs ${APP_NAME} --tail 20
-              exit 0
-            fi
-            echo "  [$i] Container not running yet..."
-          done
-          echo "Container failed to start within 30s"
-          docker logs ${APP_NAME}
-          exit 1
+          cd $DEPLOY_DIR
+
+          docker compose restart
+
+      # Verify container status
+      - name: Verify container
+        run: |
+          echo "Waiting for application..."
+
+          sleep 10
+
+          if docker ps | grep -q ${APP_NAME}; then
+            echo "Container is running"
+
+            echo ""
+            echo "Recent Logs:"
+            docker logs ${APP_NAME} --tail 30
+          else
+            echo "Container failed"
+
+            docker logs ${APP_NAME}
+
+            exit 1
+          fi
