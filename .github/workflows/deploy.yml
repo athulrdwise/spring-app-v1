@@ -73,7 +73,7 @@ jobs:
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
             --format table \
             -o $TRIVY_REPORT_DIR/${APP_NAME}-trivy.txt \
-            $DEPLOY_DIR/$JAR_FILE
+            .
               
           echo "Trivy scan completed"
 
